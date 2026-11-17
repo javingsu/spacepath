@@ -1,0 +1,53 @@
+name: 스페이스패스 공고 자동 업데이트
+
+on:
+  schedule:
+    - cron: '23 23 * * *'   # 매일 08:23 (한국 시간 = UTC+9)
+  workflow_dispatch:        # Actions 탭에서 'Run workflow'로 바로 실행
+
+permissions:
+  contents: write   # feed.json 저장
+  pages: write      # GitHub Pages 배포
+  id-token: write
+
+concurrency:
+  group: spacepath-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 공고 수집
+        run: node collector/collect.mjs
+
+      - name: 수집 결과 저장
+        run: |
+          git config user.name "spacepath-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add feed.json
+          git diff --cached --quiet || git commit -m "공고 자동 업데이트 $(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M')"
+          git push
+
+      - name: 사이트 파일 준비
+        run: |
+          mkdir -p _site
+          cp index.html feed.json _site/
+          touch _site/.nojekyll
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
